@@ -1,0 +1,11 @@
+L,W,quantity,label
+700,320,2,Top and Bottom
+954,320,1,Right Side
+954,160,1,Left Side Front
+954,664,1,Back Panel
+954,302,1,Center Divider
+954,323,1,Left Internal Partition
+323,302,2,Right Shelves
+323,142,4,Front and Side Shelves
+700,50,2,Front Plinth
+302,50,2,Side Plinths
