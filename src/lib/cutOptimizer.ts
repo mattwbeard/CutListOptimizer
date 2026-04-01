@@ -485,12 +485,11 @@ interface ExpandedPart {
 //   - If no existing column fits, open a new one (width = part's narrower dim,
 //     so the rip cut is as short as possible).
 
-// For a part, return both valid orientations sorted WIDEST-first.
-// Widest-first means new columns are opened at the part's larger dimension,
-// so tall parts (e.g. 954mm) anchor wide columns that shorter parts can share.
-// Both orientations are tried when fitting into an existing column, so the
-// best-fit logic can still pick a narrower rotation when that fills a gap better.
-function bestOrientation(
+// Return both valid orientations for a part, sorted widest-first.
+// Widest-first means existing-column fits try the column-filling orientation
+// before narrower rotations.  New-column opening uses a separate width-aware
+// helper (see pickNewColOrient) so we never blow the sheet budget.
+function bothOrientations(
   p: ExpandedPart,
   sheetH: number,
 ): Array<{ w: number; h: number; rotated: boolean }> {
@@ -498,10 +497,26 @@ function bestOrientation(
   if (p.h <= sheetH) opts.push({ w: p.w, h: p.h, rotated: false })
   if (p.w !== p.h && p.w <= sheetH) opts.push({ w: p.h, h: p.w, rotated: true })
   if (opts.length === 0) opts.push({ w: p.w, h: p.h, rotated: false }) // oversized fallback
-  // Prefer WIDER orientation first — new columns open at the larger dimension
-  // so parts with a shared long side group into the same column naturally.
   opts.sort((a, b) => b.w - a.w)
   return opts
+}
+
+// Pick the orientation to use when opening a brand-new column.
+// Strategy: use the widest orientation that still leaves the sheet wide enough
+// to also fit the tallest remaining part in a future column.  If no orientation
+// fits within the remaining budget at all, fall back to the narrowest one that
+// fits sheetH (the column will overflow and its parts will carry over).
+function pickNewColOrient(
+  _p: ExpandedPart,
+  orientations: Array<{ w: number; h: number; rotated: boolean }>,
+  remainingW: number,  // sheetW - curUsedW (space left for this and future columns)
+  sheetH: number,
+): { w: number; h: number; rotated: boolean } {
+  // Prefer widest orientation whose width fits the remaining budget
+  const fits = orientations.filter((o) => o.w <= remainingW && o.h <= sheetH)
+  if (fits.length > 0) return fits[0]  // already sorted widest-first
+  // Nothing fits the budget — use narrowest valid height (will overflow later)
+  return orientations.find((o) => o.h <= sheetH) ?? orientations[0]
 }
 
 interface OpenCol {
@@ -514,14 +529,16 @@ interface OpenCol {
 // of parts that didn't fit (to carry over to the next sheet).
 //
 // Algorithm:
-//   1. Sort parts by height descending (tallest anchor columns first).
+//   1. Sort parts by area descending so large parts anchor columns first.
 //   2. For each part, find the best existing open column where it fits:
-//        - Try both orientations; pick the orientation whose width ≤ colW.
-//        - Among qualifying columns, pick the one with the least remaining height
-//          (best-fit: minimises leftover gap).
-//   3. If no column fits, open a new column using the narrowest valid orientation.
-//   4. After assignment, place columns left-to-right; any column whose total
-//      width would overflow sheetW has its parts sent to overflow.
+//        - Try both orientations; prefer widest orientation first (fills column
+//          width), break ties by least remaining height (best-fit).
+//   3. If no column fits, open a new column.  The orientation is chosen to be
+//        the widest one that still fits within the remaining sheet width budget,
+//        so the algorithm avoids committing to a column so wide that later parts
+//        (e.g. 700mm T/B panels) have no room and must rotate unnecessarily.
+//   4. Place columns left-to-right widest-first; any column that still overflows
+//        the sheet has its parts sent to overflow for the next sheet.
 function planTrackSawSheet(
   parts: ExpandedPart[],
   sheetW: number,
@@ -530,31 +547,31 @@ function planTrackSawSheet(
 ): { placements: Placement[]; overflow: ExpandedPart[]; usedArea: number } {
   if (parts.length === 0) return { placements: [], overflow: [], usedArea: 0 }
 
-  // Sort by max dimension descending so large parts anchor columns first
-  const sorted = [...parts].sort((a, b) => Math.max(b.w, b.h) - Math.max(a.w, a.h))
+  // Sort by area descending so the largest parts open columns first
+  const sorted = [...parts].sort((a, b) => b.area - a.area)
 
   const openCols: OpenCol[] = []
+  // Track committed column width so new-column budget is accurate
+  let committedW = 0
 
   for (const part of sorted) {
-    const orientations = bestOrientation(part, sheetH)
+    const orientations = bothOrientations(part, sheetH)
 
-    // Try to fit into an existing column.
-    // Scoring: primary — maximise width utilisation (widest orientation in the
-    // column wins, so a 600mm part in a 600mm column beats a 300mm-rotated part);
-    // secondary — minimise remaining height (best-fit within equal-width candidates).
+    // ── Try to fit into an existing column ──────────────────────────────────
+    // Scoring: primary — maximise width utilisation (widest orientation wins,
+    // so a 600mm part fills a 600mm column rather than rotating to 300mm);
+    // secondary — minimise remaining height (best-fit among equal-width fits).
     let bestCol: OpenCol | null = null
     let bestOrient: { w: number; h: number; rotated: boolean } | null = null
-    let bestWidthScore = -1   // higher = better (orient.w / col.colW, tracked as orient.w)
+    let bestWidthScore = -1
     let bestRemaining = Infinity
 
     for (const col of openCols) {
       for (const orient of orientations) {
-        // Part must be no wider than the column
         if (orient.w > col.colW) continue
         const needed = col.usedH + orient.h + kerf
-        if (needed > sheetH + kerf) continue  // doesn't fit height-wise
+        if (needed > sheetH + kerf) continue
         const remaining = sheetH - needed
-        // Prefer wider orientations first; break ties with less remaining height
         if (
           orient.w > bestWidthScore ||
           (orient.w === bestWidthScore && remaining < bestRemaining)
@@ -571,29 +588,32 @@ function planTrackSawSheet(
       bestCol.entries.push({ part, ...bestOrient })
       bestCol.usedH += bestOrient.h + kerf
     } else {
-      // Open a new column — use the narrowest orientation that fits sheetH
-      const orient = orientations.find((o) => o.h <= sheetH) ?? orientations[0]
+      // ── Open a new column ────────────────────────────────────────────────
+      // Budget = remaining sheet width minus kerf gaps for any future columns.
+      // We use the full remaining width here; pickNewColOrient will choose the
+      // widest orientation that actually fits.
+      const remainingW = sheetW - committedW
+      const orient = pickNewColOrient(part, orientations, remainingW, sheetH)
       openCols.push({
         colW: orient.w,
         usedH: orient.h + kerf,
         entries: [{ part, ...orient }],
       })
+      committedW += orient.w + kerf
     }
   }
 
-  // Now place columns left-to-right; overflow any column that doesn't fit sheetW
+  // ── Place columns left-to-right, widest-first ────────────────────────────
   const placements: Placement[] = []
   const usedParts = new Set<ExpandedPart>()
   let curX = 0
 
-  // Sort columns widest-first so the big rip cuts come first (matches operator workflow)
   openCols.sort((a, b) => b.colW - a.colW)
 
   for (const col of openCols) {
     const colEffW = col.colW + kerf
     if (curX + colEffW > sheetW + kerf) continue  // overflow — skip whole column
 
-    // Sort entries within column tallest-first
     col.entries.sort((a, b) => b.h - a.h)
 
     let curY = 0

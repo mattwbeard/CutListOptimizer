@@ -448,10 +448,12 @@ describe('optimizeCutList — real-world cut list (guillotine)', () => {
     expect(total).toBe(16)
   })
 
-  it('places all 16 parts with no unfittable using tracksaw', () => {
-    // tracksaw trades some density for cut-line alignment — may use more sheets
-    // than guillotine/maxrects but must still place every part
+  it('fits all 16 parts on ≤2 sheets with tracksaw, no overlaps', () => {
+    // The track saw column packer must fit this real-world cut list across at
+    // most 2 sheets.  Pure-column layouts cannot match guillotine/maxrects
+    // density, but 2 sheets must always be sufficient (regression guard).
     const result = optimizeCutList(sheets, parts, 3, 'tracksaw')
+    expect(result.sheets.length).toBeLessThanOrEqual(2)
     expect(result.unfittable).toHaveLength(0)
     const total = result.sheets.reduce((s, sh) => s + sh.placements.length, 0)
     expect(total).toBe(16)
