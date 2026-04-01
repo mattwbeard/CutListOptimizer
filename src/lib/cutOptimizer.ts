@@ -485,9 +485,11 @@ interface ExpandedPart {
 //   - If no existing column fits, open a new one (width = part's narrower dim,
 //     so the rip cut is as short as possible).
 
-// For one orientation of a part, return { w, h, rotated }.
-// We prefer the orientation where the part is NARROWER (smaller w) so the
-// column — and thus the rip cut — is as short as possible.
+// For a part, return both valid orientations sorted WIDEST-first.
+// Widest-first means new columns are opened at the part's larger dimension,
+// so tall parts (e.g. 954mm) anchor wide columns that shorter parts can share.
+// Both orientations are tried when fitting into an existing column, so the
+// best-fit logic can still pick a narrower rotation when that fills a gap better.
 function bestOrientation(
   p: ExpandedPart,
   sheetH: number,
@@ -496,8 +498,9 @@ function bestOrientation(
   if (p.h <= sheetH) opts.push({ w: p.w, h: p.h, rotated: false })
   if (p.w !== p.h && p.w <= sheetH) opts.push({ w: p.h, h: p.w, rotated: true })
   if (opts.length === 0) opts.push({ w: p.w, h: p.h, rotated: false }) // oversized fallback
-  // Prefer narrower orientation (smaller column width = shorter rip cut)
-  opts.sort((a, b) => a.w - b.w)
+  // Prefer WIDER orientation first — new columns open at the larger dimension
+  // so parts with a shared long side group into the same column naturally.
+  opts.sort((a, b) => b.w - a.w)
   return opts
 }
 
@@ -535,9 +538,13 @@ function planTrackSawSheet(
   for (const part of sorted) {
     const orientations = bestOrientation(part, sheetH)
 
-    // Try to fit into an existing column (best-fit: least remaining height)
+    // Try to fit into an existing column.
+    // Scoring: primary — maximise width utilisation (widest orientation in the
+    // column wins, so a 600mm part in a 600mm column beats a 300mm-rotated part);
+    // secondary — minimise remaining height (best-fit within equal-width candidates).
     let bestCol: OpenCol | null = null
     let bestOrient: { w: number; h: number; rotated: boolean } | null = null
+    let bestWidthScore = -1   // higher = better (orient.w / col.colW, tracked as orient.w)
     let bestRemaining = Infinity
 
     for (const col of openCols) {
@@ -547,7 +554,12 @@ function planTrackSawSheet(
         const needed = col.usedH + orient.h + kerf
         if (needed > sheetH + kerf) continue  // doesn't fit height-wise
         const remaining = sheetH - needed
-        if (remaining < bestRemaining) {
+        // Prefer wider orientations first; break ties with less remaining height
+        if (
+          orient.w > bestWidthScore ||
+          (orient.w === bestWidthScore && remaining < bestRemaining)
+        ) {
+          bestWidthScore = orient.w
           bestRemaining = remaining
           bestCol = col
           bestOrient = orient

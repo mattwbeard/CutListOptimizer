@@ -119,77 +119,7 @@ export default function ResultsPanel({
   // ── Results state ────────────────────────────────────────────────────────────
   return (
     <div ref={containerRef} data-results className="space-y-6">
-      {/* Unfittable warning */}
-      {results.unfittable.length > 0 && (
-        <div
-          role="alert"
-          className="warning-box island-shell rounded-2xl border-l-4 border-[var(--color-warning)] p-4"
-        >
-          <div className="mb-2 flex items-center gap-2 text-[var(--color-warning)]">
-            <AlertCircle size={16} aria-hidden="true" />
-            <span className="font-semibold text-sm">
-              {results.unfittable.length} part
-              {results.unfittable.length !== 1 ? 's' : ''} could not be placed
-            </span>
-          </div>
-          <ul className="space-y-0.5 pl-1">
-            {results.unfittable.map((p, i) => (
-              <li key={i} className="text-sm text-[var(--sea-ink-soft)]">
-                • {p.label} ({p.w}×{p.h}mm) — too large for any sheet
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Sheet canvases */}
-      {results.sheets.map((sheetResult) => (
-        <div key={`${sheetResult.sheetDef.id}-${sheetResult.index}`} className="island-shell rounded-2xl p-4">
-          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className="island-kicker">Sheet {sheetResult.index}</span>
-            <span className="text-sm font-medium text-[var(--sea-ink)]">
-              {sheetResult.sheetDef.label}
-            </span>
-            <span className="text-sm text-[var(--sea-ink-soft)]">
-              {sheetResult.sheetDef.width}×{sheetResult.sheetDef.height}mm
-            </span>
-            <span
-              className={`ml-auto text-sm font-semibold ${
-                sheetResult.wastePercent > 50
-                  ? 'text-[var(--color-warning)]'
-                  : 'text-[var(--palm)]'
-              }`}
-            >
-              {sheetResult.wastePercent}% waste
-            </span>
-          </div>
-          <SheetCanvas
-            sheetResult={sheetResult}
-            colorMap={colorMap}
-            containerWidth={containerWidth}
-          />
-          {sheetResult.cuts && sheetResult.cuts.length > 0 && (
-            <details className="mt-3 border-t border-[var(--line)] pt-3">
-              <summary className="cursor-pointer select-none text-sm font-semibold text-[var(--sea-ink)] hover:text-[var(--lagoon)] transition-colors">
-                Cut sequence — {sheetResult.cuts.length} cut{sheetResult.cuts.length !== 1 ? 's' : ''}
-              </summary>
-              <ol className="mt-2 space-y-1 pl-5 list-decimal text-sm text-[var(--sea-ink-soft)]">
-                {sheetResult.cuts.map((cut) => (
-                  <li key={cut.step}>
-                    <span className="text-[var(--sea-ink)] font-medium">
-                      {cut.axis === 'y' ? 'Horizontal' : 'Vertical'} cut
-                    </span>
-                    {' '}at {cut.axis === 'y' ? 'y' : 'x'}={cut.position}mm
-                    {' '}— {cut.length}mm long
-                  </li>
-                ))}
-              </ol>
-            </details>
-          )}
-        </div>
-      ))}
-
-      {/* Summary table */}
+      {/* Summary table — shown first */}
       {results.sheets.length > 0 && (
         <div className="island-shell overflow-hidden rounded-2xl">
           <div className="border-b border-[var(--line)] px-5 py-3 flex items-baseline gap-3">
@@ -272,6 +202,76 @@ export default function ResultsPanel({
           </div>
         </div>
       )}
+
+      {/* Unfittable warning */}
+      {results.unfittable.length > 0 && (
+        <div
+          role="alert"
+          className="warning-box island-shell rounded-2xl border-l-4 border-[var(--color-warning)] p-4"
+        >
+          <div className="mb-2 flex items-center gap-2 text-[var(--color-warning)]">
+            <AlertCircle size={16} aria-hidden="true" />
+            <span className="font-semibold text-sm">
+              {results.unfittable.length} part
+              {results.unfittable.length !== 1 ? 's' : ''} could not be placed
+            </span>
+          </div>
+          <ul className="space-y-0.5 pl-1">
+            {results.unfittable.map((p, i) => (
+              <li key={i} className="text-sm text-[var(--sea-ink-soft)]">
+                • {p.label} ({p.w}×{p.h}mm) — too large for any sheet
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Sheet canvases */}
+      {results.sheets.map((sheetResult) => (
+        <div key={`${sheetResult.sheetDef.id}-${sheetResult.index}`} className="island-shell rounded-2xl p-4">
+          <div className="mb-3 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+            <span className="island-kicker">Sheet {sheetResult.index}</span>
+            <span className="text-sm font-medium text-[var(--sea-ink)]">
+              {sheetResult.sheetDef.label}
+            </span>
+            <span className="text-sm text-[var(--sea-ink-soft)]">
+              {sheetResult.sheetDef.width}×{sheetResult.sheetDef.height}mm
+            </span>
+            <span
+              className={`ml-auto text-sm font-semibold ${
+                sheetResult.wastePercent > 50
+                  ? 'text-[var(--color-warning)]'
+                  : 'text-[var(--palm)]'
+              }`}
+            >
+              {sheetResult.wastePercent}% waste
+            </span>
+          </div>
+          <SheetCanvas
+            sheetResult={sheetResult}
+            colorMap={colorMap}
+            containerWidth={containerWidth}
+          />
+          {sheetResult.cuts && sheetResult.cuts.length > 0 && (
+            <details className="mt-3 border-t border-[var(--line)] pt-3">
+              <summary className="cursor-pointer select-none text-sm font-semibold text-[var(--sea-ink)] hover:text-[var(--lagoon)] transition-colors">
+                Cut sequence — {sheetResult.cuts.length} cut{sheetResult.cuts.length !== 1 ? 's' : ''}
+              </summary>
+              <ol className="mt-2 space-y-1 pl-5 list-decimal text-sm text-[var(--sea-ink-soft)]">
+                {sheetResult.cuts.map((cut) => (
+                  <li key={cut.step}>
+                    <span className="text-[var(--sea-ink)] font-medium">
+                      {cut.axis === 'y' ? 'Horizontal' : 'Vertical'} cut
+                    </span>
+                    {' '}at {cut.axis === 'y' ? 'y' : 'x'}={cut.position}mm
+                    {' '}— {cut.length}mm long
+                  </li>
+                ))}
+              </ol>
+            </details>
+          )}
+        </div>
+      ))}
     </div>
   )
 }

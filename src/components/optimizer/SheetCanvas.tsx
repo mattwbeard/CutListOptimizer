@@ -70,7 +70,8 @@ export default function SheetCanvas({
     const sheetW = sheetDef.width
     const sheetH = sheetDef.height
 
-    const maxCanvasW = Math.max(300, containerWidth - 4)
+    // containerWidth is the outer panel width; subtract card padding (p-4 = 16px × 2 sides = 32px)
+    const maxCanvasW = Math.max(200, containerWidth - 32)
     const maxCanvasH = 600
 
     const scale = Math.min(maxCanvasW / sheetW, maxCanvasH / sheetH)
@@ -230,7 +231,7 @@ export default function SheetCanvas({
       ref={canvasRef}
       role="img"
       aria-label={`Cut diagram for Sheet ${sheetResult.index}: ${sheetDef.label}`}
-      className="block rounded-lg"
+      className="block max-w-full rounded-lg"
     />
   )
 }
